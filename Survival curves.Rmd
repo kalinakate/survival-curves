@@ -1,0 +1,233 @@
+---
+title: "DZ5_KrivDozhit"
+author: "Kate"
+date: '3 мая 2018 г '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library("survival")
+```
+
+### Кривые дожития.
+
+Загружаем данные:
+
+```{r}
+DataFac <- read.csv("D:/Учеба/8 семестр/Алексеева/baseMA.csv", header = TRUE, sep = ";",dec = ",")
+```
+
+
+
+Данные по дожитию - время закрытия артериального протока  при условии 
+варианты: 1)  Alone Breathing 0,  
+          2)  Alone Breathing 1, 
+          3)   Hemotransfusion 0,  
+          4) Hemotransfusion 1, 
+          5) Horm 0,  
+          6) IN 1; 
+цензурирование outcome: 1 – отказ, 0 – цензурирование.
+
+Беру вариант 5 (Horm 0)
+
+
+```{r}
+DMFix <- data.frame(DataFac$Day_of_clos, DataFac$Horm, DataFac$Outcome)
+DMFix <- na.omit(DMFix)
+
+n <- nrow(DMFix)
+
+j <- c()
+for(i in (1:n)){   #Здесь я удалила единички из переменной Horm
+  if(DMFix$DataFac.Horm[i]==1){
+    j <- c(j, i)
+  }
+}
+
+DMFix <- DMFix[-j,]
+```
+
+
+##1. Построить оценку Каплана-Мейера.
+
+```{r}
+S<- survfit(Surv(DataFac.Day_of_clos,event=1-DataFac.Outcome)~1,data=DMFix) # вычисление оценки Каплана-Майера для кривой дожития по цензурированным данным с 95% доверительным интервалом
+S
+```
+
+```{r}
+ plot(S, xlim=c(0, 25))
+```
+
+
+А тут считаем ручками:
+
+т.е. мы должны построить табличку, в которой будут отмечены точки нашего графика.
+```{r}
+vrem <- DMFix$DataFac.Day_of_clos
+tab <- data.frame(table(vrem))
+tab
+```
+
+Считаем d0 и d1
+```{r}
+tabCenz <- data.frame(table(vrem[DMFix$DataFac.Outcome==0]))
+tabCenz2 <- data.frame(table(vrem[DMFix$DataFac.Outcome==1]))
+
+d0 <- rep(0,25)
+d1 <- rep(0,25)
+d0[tab[,1]%in%tabCenz[,1]] <- tabCenz[,2]
+d1[tab[,1]%in%tabCenz2[,1]] <- tabCenz2[,2]
+```
+
+Считаем ri:
+
+```{r}
+vr <- cumsum(tab$Freq[-25])
+ri <- 118-c(0, vr)
+```
+
+И последнее:
+
+```{r}
+tab <- cbind(tab, d0, d1, ri)
+tab <- rbind(c(0,0,0,0,118),tab)
+Fi <- exp(cumsum(log((tab$ri-tab$d0)/tab$ri)))
+tab <- cbind(tab, Fi)
+tab
+```
+
+
+Рисуем график:
+
+```{r}
+ plot(S, xlim=c(0, 25))
+ lines(tab$vrem, Fi, col="red", type="s")
+```
+
+
+
+##2. Оценить параметр постоянного риска с указанием доверительных интервалов. 
+
+
+Параметр ("ro") экспоненциальной модели кривой дожития вычисляется как отношения числа отказов к суммарной наработке.
+
+```{r}
+#Число откахов:
+t <- 0
+for(i in (1:(nrow(DMFix)))){
+  if(DMFix$DataFac.Outcome[i]==0){
+    t <- t+1
+  }
+}
+ro <- t/sum(DMFix[,1])
+ro
+```
+
+Доверительные интервалы:
+
+```{r}
+DF <- Fi*sqrt(cumsum(tab$d0/tab$ri/(tab$ri-tab$d0)))
+DF #Посчитали формулу Гринвуда
+```
+
+```{r}
+plot(tab$vrem, Fi, type="s", xlim = c(0,25), ylim=c(0,1))
+lines(tab$vrem, Fi+qnorm(0.025)*DF,type="s", col="green", xlim = c(0,25))
+lines(tab$vrem, Fi+qnorm(0.975)*DF,type="s", col="green", xlim = c(0,25))
+lines(S, mark.time=FALSE, col="red",conf.int=TRUE)
+```
+
+
+
+##3. Сравнить по лог-ранговому критерию кривые дожития у мальчиков и девочек. 
+
+Данные:
+
+
+```{r}
+DMFix <- data.frame(DataFac$Day_of_clos, DataFac$Horm, DataFac$Outcome, DataFac$Sex)
+DMFix <- na.omit(DMFix)
+
+n <- nrow(DMFix)
+
+j <- c()
+for(i in (1:n)){   #Здесь я удалила единички из переменной Horm
+  if(DMFix$DataFac.Horm[i]==1){
+    j <- c(j, i)
+  }
+}
+
+DMFix <- DMFix[-j,]
+DMFix
+```
+
+```{r}
+DmGirl <- c()
+
+for(i in (1:118)){
+  if(DMFix$DataFac.Sex[i]==2){
+    DmGirl <- rbind(DmGirl, DMFix[i,])
+  }
+}
+```
+
+```{r}
+DmBoy <- c()
+
+for(i in (1:118)){
+  if(DMFix$DataFac.Sex[i]==1){
+    DmBoy <- rbind(DmBoy, DMFix[i,])
+  }
+}
+```
+
+
+
+```{r}
+S1 <- survfit(Surv(DataFac.Day_of_clos,event=1-DataFac.Outcome)~1,data=DmBoy) # вычисление оценки Каплана-Майера для кривой дожития по цензурированным данным с 95% доверительным интервалом
+S1
+
+S2 <- survfit(Surv(DataFac.Day_of_clos,event=1-DataFac.Outcome)~1,data=DmGirl) # вычисление оценки Каплана-Майера для кривой дожития по цензурированным данным с 95% доверительным интервалом
+S2
+```
+
+```{r}
+ plot(S1, xlim=c(0, 25), col="blue")
+lines(S2, col="red",conf.int=TRUE)
+```
+
+
+```{r}
+S3 <- survdiff(Surv(DataFac.Day_of_clos, event=1-DataFac.Horm) ~ DataFac.Sex, data=DMFix)
+S3
+```
+
+```{r}
+S4 <- survfit(Surv(DataFac.Day_of_clos, event=1-DataFac.Horm) ~ DataFac.Sex, data=DMFix)
+S4
+```
+
+```{r}
+plot(S4)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
